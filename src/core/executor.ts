@@ -15,6 +15,7 @@ import { loadConfig, type AgentConfig } from '../config/index.js';
 import { createMcpClient, McpClient } from '../mcp/index.js';
 import { loadDiffForStep } from '../utils/diff.js';
 import { resolveWithinCwd, readTextFile } from '../utils/index.js';
+import { loadFileContexts } from '../utils/context.js';
 import { generateDiffWithOllama } from '../llm/index.js';
 
 export interface ExecuteOptions {
