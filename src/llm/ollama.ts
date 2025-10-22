@@ -70,7 +70,7 @@ const extractJson = (response: string): string => {
 
 const DEFAULT_ENDPOINT = process.env.OLLAMA_ENDPOINT ?? 'http://127.0.0.1:11434/api/generate';
 const REQUEST_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 180000);
-const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? 64000);
+const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? 16384);
 
 interface OllamaGenerateBody {
   model: string;
