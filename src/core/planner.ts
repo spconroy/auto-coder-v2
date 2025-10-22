@@ -41,6 +41,24 @@ const readSpecInput = async (spec: string): Promise<PlanInputs> => {
   };
 };
 
+const inferChangeHints = (specText: string): string[] => {
+  const hints = new Set<string>();
+  const lower = specText.toLowerCase();
+
+  const register = (keyword: string, path: string): void => {
+    if (lower.includes(keyword.toLowerCase())) {
+      hints.add(path);
+    }
+  };
+
+  register('readme', 'README.md');
+  register('agents', 'AGENTS.md');
+  register('contributing', 'CONTRIBUTING.md');
+  register('docs/', 'docs/README.md');
+
+  return Array.from(hints);
+};
+
 const buildStubGraph = (config: AgentConfig): TaskStep[] => {
   const defaultTestFramework =
     (config.tools.tests.default as string | undefined) ?? 'vitest';
@@ -118,6 +136,16 @@ export const planTask = async (spec: string, options: PlanOptions = {}): Promise
       spec_length: specText.length,
     },
   };
+
+  const changeHints = inferChangeHints(specText);
+  const editStep = task.graph.find((step) => step.kind === 'edit');
+  if (editStep && (!editStep.changes || editStep.changes.length === 0) && changeHints.length > 0) {
+    editStep.changes = changeHints.map((path) => ({ path, mode: 'patch' }));
+    task.metadata = {
+      ...(task.metadata ?? {}),
+      change_hints: changeHints,
+    };
+  }
 
   const tasksDir = resolveWithinCwd('.coder/tasks');
   await ensureDir(tasksDir);

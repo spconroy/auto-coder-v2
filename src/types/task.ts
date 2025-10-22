@@ -61,6 +61,7 @@ export interface TaskMetadata {
   spec_snapshot?: string;
   source_label?: string;
   spec_length?: number;
+  change_hints?: string[];
 }
 
 export interface TaskFile {
