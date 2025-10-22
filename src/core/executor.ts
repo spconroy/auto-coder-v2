@@ -251,19 +251,22 @@ const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHand
     let commitMessageOverride: string | undefined;
 
     let loaded = await loadDiffForStep(task.id, step);
-    if (!loaded) {
+    const changeHints = step.changes?.map((change) => change.path);
+    const fileContexts = changeHints?.length ? await loadFileContexts(changeHints) : [];
+
+    const generateDiff = async (message: string): Promise<{ ok: boolean; error?: string }> => {
       try {
         const specSnapshot = task.metadata?.spec_snapshot
           ? await readTextFile(resolveWithinCwd(task.metadata.spec_snapshot))
           : undefined;
-        const changeHints = step.changes?.map((change) => change.path);
         const llmResult = await generateDiffWithOllama({
           model,
           stepId: step.id,
           taskId: task.id,
-          goal: step.goal,
+          goal: message,
           specText: specSnapshot,
           changeHints,
+          fileContexts,
         });
 
         loaded = { diff: llmResult.diff, source: 'ollama-generated' };
@@ -277,10 +280,26 @@ const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHand
         artifacts.push(
           await writeStepArtifact(task.id, step.id, 'ollama-diff', llmResult.diff),
         );
+        return { ok: true };
       } catch (error: unknown) {
+        artifacts.push(
+          await writeStepArtifact(
+            task.id,
+            step.id,
+            `ollama-failure-${Date.now()}`,
+            String(error),
+          ),
+        );
+        return { ok: false, error: String(error) };
+      }
+    };
+
+    if (!loaded) {
+      const attempt = await generateDiff(step.goal);
+      if (!attempt.ok) {
         return {
           status: 'failed',
-          error: `Failed to generate diff via Ollama: ${String(error)}`,
+          error: `Failed to generate diff via Ollama: ${attempt.error}`,
           artifacts,
         };
       }
@@ -289,11 +308,16 @@ const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHand
     if (!isUnifiedDiff(loaded.diff)) {
       const errorMessage = 'Model returned a patch that is not a valid unified diff.';
       artifacts.push(await writeStepArtifact(task.id, step.id, 'ollama-invalid-diff', loaded.diff));
-      return {
-        status: 'failed',
-        error: errorMessage,
-        artifacts,
-      };
+      const retry = await generateDiff(
+        `${step.goal}. Previous attempt failed because: ${errorMessage}. Produce a valid unified diff for the target files.`,
+      );
+      if (!retry.ok || !loaded || !isUnifiedDiff(loaded.diff)) {
+        return {
+          status: 'failed',
+          error: retry.error ?? errorMessage,
+          artifacts,
+        };
+      }
     }
 
     await logStepEvent(task.id, 'info', 'apply-diff', {
