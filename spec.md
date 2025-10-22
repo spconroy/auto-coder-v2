@@ -154,7 +154,7 @@ Use this doc to track delivery of the autonomous, Ollama-backed coding agent. Ch
 
 ## Prompt Surfaces & LLM Contract
 - [ ] Provide planning prompt referencing repo map, diffs, package manifests, and available tools.
-- [ ] Provide edit prompt that returns strict JSON `{"commit_msg":"...", "diff":"..."}` with unified diff scoped to the repo root.
+- [x] Provide edit prompt that returns strict JSON `{"commit_msg":"...", "diff":"..."}` with unified diff scoped to the repo root.
 - [ ] Provide fix-from-logs prompt for test/lint failures with minimal patches.
 - [ ] Handle invalid diff/tool errors with corrective re-prompts and bounded retries.
 
@@ -203,7 +203,7 @@ def plan(i: str, model: str | None = None):
 - [ ] Implement method routers for `/tools/{namespace}.{method}`.
 - [ ] Enforce policy guards (paths, allowlists, timeouts) across all tools.
 - [x] Ensure executor sequences `fs.apply_patch (dry_run) → fs.apply_patch → git.commit`.
-- [ ] Integrate Ollama client producing contract-compliant JSON responses.
+- [x] Integrate Ollama client producing contract-compliant JSON responses.
 - [x] Persist `.coder/state`, `.coder/logs`, and `.coder/artifacts` per task/step.
 - [ ] Wire test runner to support `fix_and_retry` loop.
 - [ ] Provide merge routine (default squash) and tag creation.

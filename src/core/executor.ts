@@ -14,6 +14,8 @@ import { writeStepArtifact } from '../artifacts/index.js';
 import { loadConfig, type AgentConfig } from '../config/index.js';
 import { createMcpClient, McpClient } from '../mcp/index.js';
 import { loadDiffForStep } from '../utils/diff.js';
+import { resolveWithinCwd, readTextFile } from '../utils/index.js';
+import { generateDiffWithOllama } from '../llm/index.js';
 
 export interface ExecuteOptions {
   autonomous?: boolean;
@@ -30,6 +32,7 @@ export interface StepExecutionContext {
 export interface StepResult extends Partial<TaskStateStep> {
   status: TaskStateStep['status'];
   artifacts?: string[];
+  commitMessage?: string;
 }
 
 type StepHandler = (ctx: StepExecutionContext) => Promise<StepResult>;
@@ -112,6 +115,14 @@ const runCommand = async (
 };
 
 const getShellBinary = (command: string): string => command.trim().split(/\s+/)[0] ?? '';
+
+const sanitizeCommitMessage = (message: string): string => {
+  const firstLine = message.split(/\r?\n/)[0]?.trim() ?? '';
+  if (!firstLine) {
+    return 'task: automated change';
+  }
+  return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
+};
 
 const createShellHandler = (config: AgentConfig): StepHandler => {
   return async ({ step, task }: StepExecutionContext): Promise<StepResult> => {
@@ -224,12 +235,43 @@ const createTestHandler = (config: AgentConfig): StepHandler => {
 
 const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHandler => {
   return async ({ task, step, mcp }: StepExecutionContext): Promise<StepResult> => {
-    const loaded = await loadDiffForStep(task.id, step);
+    const artifacts: string[] = [];
+    let commitMessageOverride: string | undefined;
+
+    let loaded = await loadDiffForStep(task.id, step);
     if (!loaded) {
-      return {
-        status: 'skipped',
-        note: 'No diff provided. Place diff at .coder/patches/<task>/<step>.diff or set diffPath.',
-      };
+      try {
+        const specSnapshot = task.metadata?.spec_snapshot
+          ? await readTextFile(resolveWithinCwd(task.metadata.spec_snapshot))
+          : undefined;
+        const changeHints = step.changes?.map((change) => change.path);
+        const llmResult = await generateDiffWithOllama({
+          model: config.model,
+          stepId: step.id,
+          taskId: task.id,
+          goal: step.goal,
+          specText: specSnapshot,
+          changeHints,
+        });
+
+        loaded = { diff: llmResult.diff, source: 'ollama-generated' };
+        commitMessageOverride = llmResult.commitMessage;
+        artifacts.push(
+          await writeStepArtifact(task.id, step.id, 'ollama-prompt', llmResult.prompt),
+        );
+        artifacts.push(
+          await writeStepArtifact(task.id, step.id, 'ollama-response', llmResult.rawResponse),
+        );
+        artifacts.push(
+          await writeStepArtifact(task.id, step.id, 'ollama-diff', llmResult.diff),
+        );
+      } catch (error: unknown) {
+        return {
+          status: 'failed',
+          error: `Failed to generate diff via Ollama: ${String(error)}`,
+          artifacts,
+        };
+      }
     }
 
     await logStepEvent(task.id, 'info', 'apply-diff', {
@@ -238,9 +280,7 @@ const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHand
     });
 
     const patchResult = await mcp.fsApplyPatch(loaded.diff);
-    const artifacts: string[] = [
-      await writeStepArtifact(task.id, step.id, 'diff', loaded.diff),
-    ];
+    artifacts.push(await writeStepArtifact(task.id, step.id, 'diff', loaded.diff));
 
     if (!patchResult.ok) {
       if (patchResult.stdout) {
@@ -260,15 +300,19 @@ const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHand
     let commitSha: string | undefined;
     if (hasChanges) {
       await stageAllChanges();
-      const message = `task(${step.id}): ${kind === 'doc' ? 'update docs' : 'apply edits'}`;
-      commitSha = await commitAllChanges(message);
+      const defaultMessage = `task(${step.id}): ${kind === 'doc' ? 'update docs' : 'apply edits'}`;
+      const rawMessage = commitMessageOverride?.trim()?.length ? commitMessageOverride : defaultMessage;
+      commitSha = await commitAllChanges(sanitizeCommitMessage(rawMessage));
     }
 
     return {
       status: 'success',
-      note: hasChanges ? `Applied diff and committed ${commitSha ?? ''}` : 'Applied diff (no changes staged).',
+      note: hasChanges
+        ? `Applied diff and committed ${commitSha ?? ''}`
+        : 'Applied diff (no changes staged).',
       artifacts,
       commit_sha: commitSha,
+      commitMessage: commitMessageOverride,
     };
   };
 };
@@ -402,6 +446,7 @@ export const executeTask = async (taskId: string, options: ExecuteOptions = {}):
       stepId: step.id,
       status: result.status,
       commitSha,
+      commitMessage: result.commitMessage,
       note: result.note,
       error: result.error,
       artifacts: result.artifacts,
