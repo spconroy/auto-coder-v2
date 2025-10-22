@@ -30,6 +30,9 @@ Scaffold for a local-first autonomous coding agent powered by Ollama and MCP too
 
 > The current CLI wires up `plan`, `show`, `run`, and `resume` with lightweight helpers (task generation, persistence, and state tracking). MCP-backed execution still needs to be filled in per the `spec.md` checklist.
 
+### Current Limitation
+- LLM-generated diffs for documentation tasks (README.md, AGENTS.md) are not yet reliable; the agent rejects malformed patches until we integrate a more instruction-following model.
+
 ## Project Structure
 
 - `src/cli` – Command-line entry point (Commander-based surface).
