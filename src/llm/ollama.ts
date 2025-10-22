@@ -59,11 +59,13 @@ const extractJson = (response: string): string => {
 
 const DEFAULT_ENDPOINT = process.env.OLLAMA_ENDPOINT ?? 'http://127.0.0.1:11434/api/generate';
 const REQUEST_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 180000);
+const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX ?? 64000);
 
 interface OllamaGenerateBody {
   model: string;
   prompt: string;
   stream?: boolean;
+  options?: Record<string, unknown>;
 }
 
 interface OllamaGenerateResponse {
@@ -178,6 +180,9 @@ export const generateDiffWithOllama = async (
       model: request.model,
       prompt,
       stream: false,
+      options: {
+        num_ctx: NUM_CTX,
+      },
     });
     llmRawResponse = result.raw;
     stdout = result.text;
