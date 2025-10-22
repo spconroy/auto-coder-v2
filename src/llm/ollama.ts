@@ -8,6 +8,7 @@ export interface OllamaDiffRequest {
   goal: string;
   specText?: string;
   changeHints?: string[];
+  fileContexts?: { path: string; snippet: string }[];
 }
 
 export interface OllamaDiffResult {
@@ -25,11 +26,18 @@ const buildPrompt = (request: OllamaDiffRequest): string => {
       : request.specText
     : undefined;
   const hints = request.changeHints?.length
-    ? `\nTarget files: ${request.changeHints.join(', ')}`
+    ? `\nTarget files (edit only these): ${request.changeHints.join(', ')}`
     : '';
 
   const specSection = specText
     ? `\n## Specification\n${specText}`
+    : '';
+
+  const contextSection = request.fileContexts?.length
+    ? '\n## Relevant Files\n' +
+      request.fileContexts
+        .map((ctx) => `### ${ctx.path}\n\n${ctx.snippet}`)
+        .join('\n\n')
     : '';
 
   return [
@@ -39,12 +47,15 @@ const buildPrompt = (request: OllamaDiffRequest): string => {
     'The diff MUST be a valid unified patch that starts with either "--- a/<file>" and "+++ b/<file>" or "diff --git a/<file> b/<file>" lines, followed by @@ hunks.',
     'The diff must apply cleanly with `git apply` from the repository root.',
     'Do not wrap the JSON in markdown fences or include extra commentary outside the JSON object.',
+    'Only modify the listed target files; do not create new files or touch unrelated paths.',
+    'Preserve existing sections unless instructed otherwise; append the new content under the appropriate heading.',
     '',
     `## Task`,
     `Task ID: ${request.taskId}`,
     `Step ID: ${request.stepId}`,
     `Goal: ${request.goal}${hints}`,
     specSection,
+    contextSection,
   ].join('\n');
 };
 
