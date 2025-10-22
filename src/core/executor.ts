@@ -27,6 +27,7 @@ export interface StepExecutionContext {
   options: ExecuteOptions;
   config: AgentConfig;
   mcp: McpClient;
+  model: string;
 }
 
 export interface StepResult extends Partial<TaskStateStep> {
@@ -122,6 +123,17 @@ const sanitizeCommitMessage = (message: string): string => {
     return 'task: automated change';
   }
   return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
+};
+
+const isUnifiedDiff = (diff: string): boolean => {
+  const trimmed = diff.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  const hasDiffGit = /^diff --git a\/.+ b\/.+/m.test(trimmed);
+  const hasUnifiedHeaders = /^--- \w.*\n\+\+\+ \w.*/m.test(trimmed);
+  const hasHunks = /\n@@ /.test(trimmed);
+  return (hasDiffGit || hasUnifiedHeaders) && hasHunks;
 };
 
 const createShellHandler = (config: AgentConfig): StepHandler => {
@@ -234,7 +246,7 @@ const createTestHandler = (config: AgentConfig): StepHandler => {
 };
 
 const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHandler => {
-  return async ({ task, step, mcp }: StepExecutionContext): Promise<StepResult> => {
+  return async ({ task, step, mcp, model }: StepExecutionContext): Promise<StepResult> => {
     const artifacts: string[] = [];
     let commitMessageOverride: string | undefined;
 
@@ -246,7 +258,7 @@ const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHand
           : undefined;
         const changeHints = step.changes?.map((change) => change.path);
         const llmResult = await generateDiffWithOllama({
-          model: config.model,
+          model,
           stepId: step.id,
           taskId: task.id,
           goal: step.goal,
@@ -272,6 +284,16 @@ const createPatchHandler = (config: AgentConfig, kind: 'edit' | 'doc'): StepHand
           artifacts,
         };
       }
+    }
+
+    if (!isUnifiedDiff(loaded.diff)) {
+      const errorMessage = 'Model returned a patch that is not a valid unified diff.';
+      artifacts.push(await writeStepArtifact(task.id, step.id, 'ollama-invalid-diff', loaded.diff));
+      return {
+        status: 'failed',
+        error: errorMessage,
+        artifacts,
+      };
     }
 
     await logStepEvent(task.id, 'info', 'apply-diff', {
@@ -387,6 +409,7 @@ export const executeTask = async (taskId: string, options: ExecuteOptions = {}):
     console.log(chalk.cyan(`  • [${step.kind}] ${step.id}: ${step.goal}`));
 
     const handler = resolveHandler(step.kind, config);
+    const activeModel = task.model ?? config.model;
     const aggregatedArtifacts = new Set<string>(currentState.steps[step.id].artifacts ?? []);
     let attempt = 0;
     const maxFixCycles =
@@ -395,7 +418,7 @@ export const executeTask = async (taskId: string, options: ExecuteOptions = {}):
 
     while (true) {
       try {
-        result = await handler({ task, step, options, config, mcp });
+        result = await handler({ task, step, options, config, mcp, model: activeModel });
       } catch (error: unknown) {
         result = {
           status: 'failed',
