@@ -1,0 +1,11 @@
+node_modules
+dist
+.DS_Store
+.coder/state
+.coder/logs
+.coder/artifacts
+.coder/tasks
+.coder/specs
+.coder/patches
+npm-debug.log
+coverage

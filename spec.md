@@ -149,8 +149,8 @@ Use this doc to track delivery of the autonomous, Ollama-backed coding agent. Ch
 ## MCP Tooling
 - [ ] Implement JSON-RPC 2.0 endpoints for `fs.read`, `fs.write`, `fs.apply_patch`, `fs.glob`, `git.status`, `git.commit`, `git.checkout`, `git.merge`, `git.revert`, `shell.run`, `tests.run`, `project.search`.
 - [ ] Enforce path containment, allowlists, diff size caps, timeouts, and resource limits.
-- [ ] Run `fs.apply_patch` in dry-run mode before applying; reject `.env`/`secrets.*` and non-text diffs.
-- [ ] Record tool responses and errors to artifacts for audit.
+- [x] Run `fs.apply_patch` in dry-run mode before applying; reject `.env`/`secrets.*` and non-text diffs.
+- [x] Record tool responses and errors to artifacts for audit.
 
 ## Prompt Surfaces & LLM Contract
 - [ ] Provide planning prompt referencing repo map, diffs, package manifests, and available tools.
@@ -166,8 +166,8 @@ Use this doc to track delivery of the autonomous, Ollama-backed coding agent. Ch
 - [ ] Provide explicit “what the agent will do” checklist prior to autonomous execution when approvals are enabled.
 
 ## Observability & Replay
-- [ ] Emit logs in structured format (JSON schema) with prompt tokens, tool durations, and exit codes.
-- [ ] Store artifacts in `.coder/artifacts/{task}/{step}` including diffs, logs, and transcripts.
+- [x] Emit logs in structured format (JSON schema) with prompt tokens, tool durations, and exit codes.
+- [x] Store artifacts in `.coder/artifacts/{task}/{step}` including diffs, logs, and transcripts.
 - [ ] Tag successful merges as `coder/<task_id>`; document branch clean-up workflow.
 - [ ] Support exporting session transcript + patch bundle for code reviews.
 
@@ -202,9 +202,10 @@ def plan(i: str, model: str | None = None):
 ## Hand-off Checklist for Devs
 - [ ] Implement method routers for `/tools/{namespace}.{method}`.
 - [ ] Enforce policy guards (paths, allowlists, timeouts) across all tools.
-- [ ] Ensure executor sequences `fs.apply_patch (dry_run) → fs.apply_patch → git.commit`.
+- [x] Ensure executor sequences `fs.apply_patch (dry_run) → fs.apply_patch → git.commit`.
 - [ ] Integrate Ollama client producing contract-compliant JSON responses.
-- [ ] Persist `.coder/state`, `.coder/logs`, and `.coder/artifacts` per task/step.
+- [x] Persist `.coder/state`, `.coder/logs`, and `.coder/artifacts` per task/step.
 - [ ] Wire test runner to support `fix_and_retry` loop.
 - [ ] Provide merge routine (default squash) and tag creation.
 - [ ] Keep README/spec updates in sync with shipped behavior.
+- [ ] Detect host hardware (CPU, RAM, GPU) during CLI startup and surface Ollama model recommendations (e.g., warn if >75% RAM would be used).
